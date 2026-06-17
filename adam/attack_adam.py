@@ -82,7 +82,7 @@ class Attack:
         for t in range(1, self.cfg.T + 1):
             mq = self.propose(t)
             resp = self.agent.query(mq)
-            queries, anchors = refine(resp.text)
+            queries, anchors = refine(resp.text, retrieved=resp.retrieved)
             for q in queries:
                 if q.lower() not in self._seen:
                     self._seen.add(q.lower())

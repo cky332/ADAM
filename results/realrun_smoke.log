@@ -1,0 +1,4 @@
+model    : Pro/deepseek-ai/DeepSeek-V3.2-Exp
+base_url : https://api.siliconflow.cn/v1
+settings : domain=ehragent attacks=['ADAM'] T=3 |M|=30 seed=0
+  -> ADAM / ehragent / T=3 / |M|=30

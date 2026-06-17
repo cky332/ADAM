@@ -33,8 +33,15 @@ def _verify(line: str) -> bool:
     return bool(_QUERY_HINT_RE.search(line))
 
 
-def refine(response_text: str) -> Tuple[List[str], List[str]]:
-    """Return (recovered_queries, anchors)."""
+def refine(response_text: str, retrieved=None) -> Tuple[List[str], List[str]]:
+    """Return (recovered_queries, anchors).
+
+    Two modes:
+      * structured response (bulleted / listed) -- parse lines verbatim;
+      * if ``retrieved`` is given (real-LLM agents), additionally treat a record
+        as recovered when a substantial overlap of its query text appears in the
+        response (the LLM may have paraphrased or quoted partially).
+    """
     queries: List[str] = []
     seen: Set[str] = set()
     for raw in response_text.splitlines():
@@ -43,9 +50,27 @@ def refine(response_text: str) -> Tuple[List[str], List[str]]:
         if not _verify(cand):
             continue
         key = re.sub(r"\s+", " ", cand.lower()).strip()
-        if key in seen:                       # de-duplication
+        if key in seen:
             continue
         seen.add(key)
         queries.append(cand)
-    anchors = extract_anchors(" ".join(queries)) if queries else []
+
+    if retrieved is not None:
+        body = re.sub(r"\s+", " ", response_text.lower())
+        for rec in retrieved:
+            q = re.sub(r"\s+", " ", rec.query.strip().lower())
+            if q in body:                                       # verbatim quote
+                if q not in seen:
+                    seen.add(q); queries.append(rec.query)
+                continue
+            # paraphrase heuristic: most distinctive content tokens reappear
+            toks = [t for t in re.findall(r"[a-z]+", q) if len(t) > 3]
+            if len(toks) >= 4:
+                hits = sum(1 for t in toks if t in body)
+                if hits / len(toks) >= 0.65:
+                    if q not in seen:
+                        seen.add(q); queries.append(rec.query)
+
+    anchors = extract_anchors(" ".join(queries) + " " + response_text) if queries else \
+              extract_anchors(response_text)
     return queries, anchors

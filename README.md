@@ -121,6 +121,12 @@ python experiments/run_convergence.py     # Figure 6
 # use real backends (identical attack code)
 export OPENAI_API_KEY=...
 python experiments/run_main_table.py --attacker-llm gpt-4o-mini --encoder all-MiniLM-L6-v2
+
+# run against a real LLM agent via SiliconFlow (DeepSeek-V3.2-Exp)
+pip install openai
+export SILICONFLOW_API_KEY=sk-...
+python realrun.py --smoke                            # 1 attack, T=3, |M|=30 (~few mins)
+python realrun.py --attacks ADAM MEXTRA --T 10       # short comparison
 ```
 
 ---

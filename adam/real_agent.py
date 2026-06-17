@@ -83,6 +83,10 @@ class RealLLMAgent:
         system = DOMAIN_PROMPTS[self.domain] + "\n" + examples
         out = self.llm.complete(f"{system}\n\nUser: {text}\nAssistant:")
         resp.text = out
+        if getattr(self.llm, "verbose", False):
+            preview = out.replace("\n", " ")[:200]
+            print(f"[victim] retrieved {len(retrieved)} records; "
+                  f"response[:200]={preview!r}", flush=True)
         # The retrieved records are what the attacker *could* learn this round;
         # which of them actually appear in `out` is decided downstream by refine().
         return resp

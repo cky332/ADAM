@@ -189,15 +189,16 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
         tmp.write_text(self._json.dumps(self._cache))
         tmp.replace(self._cache_path)
 
-    # progressively simpler parameter sets. Reasoning models (DeepSeek-V3.2-Exp)
-    # often reject small max_tokens or temperature=0 with HTTP 400 code 20015;
-    # we fall back to larger max_tokens, then a non-zero temperature, then the
-    # bare minimum, before giving up.
+    # progressively simpler parameter sets. We LEAD with temperature=0.7 because
+    # greedy decoding (temperature=0) makes several SiliconFlow-served models
+    # (Qwen2.5, DeepSeek) degenerate into repetition loops ("e e e e ...") or
+    # reject the request (HTTP 400 code 20015). Later variants drop max_tokens
+    # then all optional params.
     @staticmethod
     def _param_variants(max_tokens: int):
         return [
-            dict(temperature=0.0, max_tokens=max_tokens),
-            dict(temperature=0.7, max_tokens=max(max_tokens, 1024)),
+            dict(temperature=0.7, max_tokens=max_tokens),
+            dict(temperature=0.3, max_tokens=max(max_tokens, 512)),
             dict(temperature=0.7),                       # let the server pick max_tokens
             dict(),                                      # only model + messages
         ]
@@ -252,6 +253,26 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
         return f"[error: {last_err}]"
 
     @staticmethod
+    def _looks_degenerate(text: str) -> bool:
+        """Detect repetition-loop garbage like 'test test e e e e e ...' or
+        'What patient patient on medication'."""
+        from collections import Counter
+        words = text.lower().split()
+        if len(words) < 6:
+            return False
+        # consecutive duplicate content word (e.g. 'patient patient')
+        for a, b in zip(words, words[1:]):
+            if a == b and len(a) >= 3:
+                return True
+        uniq = len(set(words)) / len(words)
+        if uniq < 0.65:                            # too few distinct words
+            return True
+        common, n = Counter(words).most_common(1)[0]
+        if n >= 4 and len(common) <= 2:            # a tiny token dominating ('e')
+            return True
+        return False
+
+    @staticmethod
     def _extract_question(raw: str) -> str:
         """Pull a single short question out of a possibly verbose LLM response.
 
@@ -286,15 +307,14 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                "No explanation, no preamble, no chain-of-thought.")
         user = f"Topic: {topic}. Produce one realistic user question."
         self._tag = f"gen/{topic[:18]}"
-        # generous budget: reasoning models may spend tokens on hidden thinking
-        # before emitting the one-line query.
-        raw = self._chat(sys, user, max_tokens=1024)
-        if raw.startswith("[error"):
-            # network/API failed: fall back to a deterministic template so the
-            # round still produces a usable probe rather than poisoning the run.
-            self._log(f"[gen/{topic[:18]}] using offline template fallback")
+        raw = self._chat(sys, user, max_tokens=256)
+        body = "" if raw.startswith("[error") else self._extract_question(raw)
+        if not body or self._looks_degenerate(body):
+            # API failed, or the model produced a repetition-loop / garbled query.
+            # Fall back to a deterministic template so the round still yields a
+            # usable, topical probe instead of poisoning the run.
+            self._log(f"[gen/{topic[:18]}] bad output {body!r}; using template fallback")
             return MockLLM(seed=hash(topic) & 0xffff).generate(topic, domain, prefix, suffix)
-        body = self._extract_question(raw)
         self._log(f"[gen/{topic[:18]}] -> {body!r}")
         return " ".join(p for p in (prefix, body, suffix) if p).strip()
 

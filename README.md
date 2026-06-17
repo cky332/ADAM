@@ -103,6 +103,29 @@ simulation but preserve every ordering (those exact numbers are LLM-specific).
 
 ---
 
+## Deployment (Linux + Anaconda)
+
+```bash
+# 1. get the code
+git clone <repo-url> ADAM && cd ADAM
+git checkout claude/charming-pascal-b4izsp        # the branch with this work
+
+# 2a. create the env with conda (recommended)
+conda env create -f environment.yml               # builds env "adam" (python 3.11)
+conda activate adam
+
+# 2b. or with plain pip / venv
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt                   # simulation only
+pip install openai                                # also needed for realrun.py
+
+# 3. verify the install
+python tests/test_adam.py                          # expect "11/11 tests passed"
+
+# 4. run the simulation (no API key, ~20s)  -- always run from the repo root
+python run_all.py
+```
+
 ## Quick start
 
 ```bash

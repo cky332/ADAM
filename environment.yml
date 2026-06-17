@@ -1,0 +1,21 @@
+# Conda environment for the ADAM reproduction.
+#   conda env create -f environment.yml
+#   conda activate adam
+#
+# The simulation (run_all.py) needs only the core packages below. The real-LLM
+# run (realrun.py) additionally needs `openai`, installed here via pip.
+name: adam
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy>=1.24
+  - scikit-learn>=1.3
+  - scipy>=1.10
+  - matplotlib>=3.7
+  - pip
+  - pip:
+      - openai>=1.0            # SiliconFlow / OpenAI backend for realrun.py
+      # - sentence-transformers>=2.2   # uncomment for real all-MiniLM/e5/gte encoders
+      # - torch                        # backs sentence-transformers

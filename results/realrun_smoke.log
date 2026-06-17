@@ -2,3 +2,44 @@ model    : Pro/deepseek-ai/DeepSeek-V3.2-Exp
 base_url : https://api.siliconflow.cn/v1
 settings : domain=ehragent attacks=['ADAM'] T=3 |M|=30 seed=0
   -> ADAM / ehragent / T=3 / |M|=30
+Traceback (most recent call last):
+  File "/home/user/ADAM/adam/llm.py", line 191, in _chat
+    r = self._client.chat.completions.create(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/openai/_utils/_utils.py", line 298, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/openai/resources/chat/completions/completions.py", line 1251, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/openai/_base_client.py", line 1332, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/dist-packages/openai/_base_client.py", line 1105, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.PermissionDeniedError: Host resolves to a private/reserved IP: resolve_no_records
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/user/ADAM/realrun.py", line 121, in <module>
+    main()
+  File "/home/user/ADAM/realrun.py", line 106, in main
+    m = run_one(atk, args.domain, args.T, args.memory, llm, encoder, args.seed)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/ADAM/realrun.py", line 68, in run_one
+    res = atk.run()
+          ^^^^^^^^^
+  File "/home/user/ADAM/adam/attack_adam.py", line 83, in run
+    mq = self.propose(t)
+         ^^^^^^^^^^^^^^^
+  File "/home/user/ADAM/adam/attack_adam.py", line 134, in propose
+    text = self.gen.generate(a, self.domain)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/ADAM/adam/llm.py", line 213, in generate
+    body = self._chat(sys, user, max_tokens=80).strip().strip('"').splitlines()[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/ADAM/adam/llm.py", line 205, in _chat
+    time.sleep(2 ** attempt)
+    ^^^^
+NameError: name 'time' is not defined

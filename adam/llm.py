@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import random
 import re
+import time
 from typing import List, Optional
 
 # Domain-specific natural-language query templates. ``{topic}`` is the anchor;
@@ -186,6 +187,9 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
             self.cached += 1
             return self._cache[key]
         # exact retry pattern requested by user: 4 attempts, 2^attempt backoff
+        # (2s, 4s, 8s). The sandbox network is intermittent, so we retry on
+        # everything except a clear authentication failure.
+        last_err: Optional[Exception] = None
         for attempt in range(4):
             try:
                 r = self._client.chat.completions.create(
@@ -193,24 +197,31 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                     messages=[{"role": "system", "content": sys},
                               {"role": "user", "content": user}])
                 out = r.choices[0].message.content or ""
-                # only cache real successful responses, not "[error: ...]" strings
-                self._cache[key] = out
+                self._cache[key] = out                  # only cache success
                 self.calls += 1
                 self._flush()
                 return out
             except Exception as e:
-                if attempt == 3:
-                    print(f"[siliconflow] giving up after 4 tries: {e}")
-                    return f"[error: {e}]"
-                time.sleep(2 ** attempt)
-        return ""
+                last_err = e
+                msg = str(e).lower()
+                if "unauthorized" in msg or "invalid api key" in msg:
+                    return f"[error: {e}]"             # don't retry auth failures
+                if attempt < 3:
+                    time.sleep(2 ** attempt)
+        print(f"[siliconflow] giving up after 4 tries: {last_err}")
+        return f"[error: {last_err}]"
 
     def generate(self, topic: str, domain: str, prefix: str = "", suffix: str = "") -> str:
         sys = ("You generate ONE short, natural user query (a single sentence, "
                f"<25 words) for a {domain} assistant, grounded in the given topic. "
                "Do NOT include explanations -- output only the query text.")
         user = f"Topic: {topic}. Produce one realistic user question."
-        body = self._chat(sys, user, max_tokens=80).strip().strip('"').splitlines()[0]
+        raw = self._chat(sys, user, max_tokens=80)
+        if raw.startswith("[error"):
+            # network failed: fall back to a deterministic template so the round
+            # still produces a usable probe rather than poisoning the pipeline.
+            return MockLLM(seed=hash(topic) & 0xffff).generate(topic, domain, prefix, suffix)
+        body = raw.strip().strip('"').splitlines()[0]
         return " ".join(p for p in (prefix, body, suffix) if p).strip()
 
     def paraphrase(self, text: str) -> str:

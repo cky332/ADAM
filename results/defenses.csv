@@ -1,0 +1,9 @@
+defense,attack,EQ_nodef,EQ_def,retained%
+query_rewriting,ADAM,63,63,100
+query_rewriting,MEXTRA,44,43,98
+auxiliary_filtering,ADAM,63,63,100
+auxiliary_filtering,MEXTRA,44,0,0
+ra_llm,ADAM,63,58,92
+ra_llm,MEXTRA,44,26,59
+erase_and_check,ADAM,63,56,89
+erase_and_check,MEXTRA,44,25,57

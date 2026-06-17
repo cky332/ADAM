@@ -71,7 +71,10 @@ class RealLLMAgent:
         )
         resp = AgentResponse(retrieved=retrieved)
         if not retrieved:
-            resp.text = "I don't have anything relevant in memory."
+            # No relevant context to feed the LLM. Return blank text so the
+            # attacker's anchor extractor doesn't ingest the boilerplate
+            # "I don't have anything relevant" and pollute the anchor pool.
+            resp.text = ""
             return resp
 
         examples = "\n".join(

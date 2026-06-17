@@ -48,7 +48,12 @@ ATTACK_CLASSES = {"Vanilla": Vanilla, "RAG-Thief": RAGThief, "Pirate": Pirate,
 
 def run_one(attack_name: str, domain: str, T: int, memory_size: int,
             llm: SiliconFlowLLM, encoder, seed: int = 0) -> dict:
-    cfg_agent = AgentConfig(memory_size=memory_size, sim_threshold=0.20,
+    # Lower retrieval threshold + a generous pool: with a small memory, real
+    # LLM-generated probes can still differ enough from stored queries that a
+    # strict cosine cutoff would return nothing. Broader recall lets the attack
+    # actually reach the records; the LLM (not the retriever) decides what
+    # leaks.
+    cfg_agent = AgentConfig(memory_size=memory_size, sim_threshold=0.10,
                             retrieval_pool_cap=memory_size)
     mem = build_memory(domain, size=memory_size, encoder=encoder, seed=seed)
     agent = RealLLMAgent(mem, cfg_agent, domain, llm=llm, seed=seed)

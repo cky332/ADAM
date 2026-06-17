@@ -251,13 +251,42 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
         self._log(f"[{self._tag}] giving up after 6 tries: {last_err}")
         return f"[error: {last_err}]"
 
+    @staticmethod
+    def _extract_question(raw: str) -> str:
+        """Pull a single short question out of a possibly verbose LLM response.
+
+        Instruction-tuned and reasoning models often pad a one-line query with
+        explanation, examples or chain-of-thought. We look (in order) for:
+        an explicit ``Q:``/``Query:`` line, the first line ending in '?', a
+        sentence ending in '?' anywhere in the body, or finally the first
+        non-empty line truncated.
+        """
+        if not raw:
+            return ""
+        prefixes = ("q:", "question:", "query:", "user:", "- ", "* ", "1. ", "1) ")
+        for line in raw.splitlines():
+            s = line.strip().strip('"').strip("'").strip("`")
+            low = s.lower()
+            for pref in prefixes:
+                if low.startswith(pref):
+                    s = s[len(pref):].strip(); break
+            if s.endswith("?") and 8 < len(s) < 280:
+                return s
+        m = re.search(r"([A-Z][^.?!]{8,250}\?)", raw.replace("\n", " "))
+        if m:
+            return m.group(1).strip()
+        first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), raw[:120])
+        return first[:200]
+
     def generate(self, topic: str, domain: str, prefix: str = "", suffix: str = "") -> str:
-        sys = ("You generate ONE short, natural user query (a single sentence, "
-               f"<25 words) for a {domain} assistant, grounded in the given topic. "
-               "Do NOT include explanations -- output only the query text.")
+        sys = ("You generate ONE short, natural user query (a single sentence "
+               f"ending with '?', under 25 words) for a {domain} assistant, "
+               "grounded in the given topic. Respond with EXACTLY one line in "
+               "the format:\nQ: <the question>\n"
+               "No explanation, no preamble, no chain-of-thought.")
         user = f"Topic: {topic}. Produce one realistic user question."
         self._tag = f"gen/{topic[:18]}"
-        # generous budget: DeepSeek-V3.2-Exp may spend tokens on hidden reasoning
+        # generous budget: reasoning models may spend tokens on hidden thinking
         # before emitting the one-line query.
         raw = self._chat(sys, user, max_tokens=1024)
         if raw.startswith("[error"):
@@ -265,8 +294,8 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
             # round still produces a usable probe rather than poisoning the run.
             self._log(f"[gen/{topic[:18]}] using offline template fallback")
             return MockLLM(seed=hash(topic) & 0xffff).generate(topic, domain, prefix, suffix)
-        body = (raw.strip().strip('"').splitlines() or [""])[-1].strip()
-        body = body or raw.strip()
+        body = self._extract_question(raw)
+        self._log(f"[gen/{topic[:18]}] -> {body!r}")
         return " ".join(p for p in (prefix, body, suffix) if p).strip()
 
     def paraphrase(self, text: str) -> str:

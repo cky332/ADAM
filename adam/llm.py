@@ -143,13 +143,15 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
     """Real backend on SiliconFlow (OpenAI-compatible). Used by experiments/realrun.py.
 
     Caches responses on disk so repeated probes during a session never re-bill, and
-    so that interrupted runs can resume cheaply.
+    so that interrupted runs can resume cheaply. Prints per-call progress to stdout
+    so a slow model (DeepSeek-V3.2-Exp is 30-90s per call) doesn't look hung.
     """
 
     BASE_URL = "https://api.siliconflow.cn/v1"
 
     def __init__(self, model: str = "Pro/deepseek-ai/DeepSeek-V3.2-Exp",
-                 seed: int = 0, cache_path: str = ".cache/siliconflow.json"):
+                 seed: int = 0, cache_path: str = ".cache/siliconflow.json",
+                 verbose: bool = True, request_timeout: float = 120.0):
         import hashlib
         import json
         from pathlib import Path
@@ -158,7 +160,7 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
         self.name = model
         self.model = model
         self._client = OpenAI(api_key=os.environ["SILICONFLOW_API_KEY"],
-                              base_url=self.BASE_URL)
+                              base_url=self.BASE_URL, timeout=request_timeout)
         self.rng = random.Random(seed)
         self._hashlib = hashlib
         self._json = json
@@ -170,6 +172,12 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
             self._cache = {}
         self.calls = 0
         self.cached = 0
+        self.verbose = verbose
+        self._tag = "chat"
+
+    def _log(self, msg: str) -> None:
+        if self.verbose:
+            print(f"[llm] {msg}", flush=True)
 
     def _key(self, sys: str, user: str) -> str:
         h = self._hashlib.sha256()
@@ -185,12 +193,16 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
         key = self._key(sys, user)
         if key in self._cache:
             self.cached += 1
+            self._log(f"[{self._tag}] cache hit ({self.cached} cached so far)")
             return self._cache[key]
         # exact retry pattern requested by user: 4 attempts, 2^attempt backoff
-        # (2s, 4s, 8s). The sandbox network is intermittent, so we retry on
-        # everything except a clear authentication failure.
+        # (2s, 4s, 8s). Retry on everything except a clear authentication failure.
         last_err: Optional[Exception] = None
+        preview = user.replace("\n", " ")[:60]
         for attempt in range(4):
+            self._log(f"[{self._tag}] call #{self.calls + 1} attempt {attempt + 1}/4 "
+                      f"-> {preview!r}")
+            t0 = time.time()
             try:
                 r = self._client.chat.completions.create(
                     model=self.model, temperature=0, max_tokens=max_tokens,
@@ -200,15 +212,22 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                 self._cache[key] = out                  # only cache success
                 self.calls += 1
                 self._flush()
+                tokens = getattr(getattr(r, "usage", None), "completion_tokens", 0) or 0
+                self._log(f"[{self._tag}] ok in {time.time() - t0:.1f}s "
+                          f"({tokens} tokens out, {len(out)} chars)")
                 return out
             except Exception as e:
                 last_err = e
+                err_short = f"{type(e).__name__}: {str(e)[:140]}"
+                self._log(f"[{self._tag}] fail in {time.time() - t0:.1f}s -> {err_short}")
                 msg = str(e).lower()
                 if "unauthorized" in msg or "invalid api key" in msg:
                     return f"[error: {e}]"             # don't retry auth failures
                 if attempt < 3:
-                    time.sleep(2 ** attempt)
-        print(f"[siliconflow] giving up after 4 tries: {last_err}")
+                    backoff = 2 ** attempt
+                    self._log(f"[{self._tag}] sleeping {backoff}s before retry")
+                    time.sleep(backoff)
+        self._log(f"[{self._tag}] giving up after 4 tries: {last_err}")
         return f"[error: {last_err}]"
 
     def generate(self, topic: str, domain: str, prefix: str = "", suffix: str = "") -> str:
@@ -216,6 +235,7 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                f"<25 words) for a {domain} assistant, grounded in the given topic. "
                "Do NOT include explanations -- output only the query text.")
         user = f"Topic: {topic}. Produce one realistic user question."
+        self._tag = f"gen/{topic[:18]}"
         raw = self._chat(sys, user, max_tokens=80)
         if raw.startswith("[error"):
             # network failed: fall back to a deterministic template so the round
@@ -226,9 +246,11 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
 
     def paraphrase(self, text: str) -> str:
         sys = "Paraphrase the sentence, preserving meaning. Output only the paraphrase."
+        self._tag = "paraphrase"
         return self._chat(sys, text, max_tokens=80).strip()
 
     def complete(self, prompt: str, **_) -> str:
+        self._tag = "victim"
         return self._chat("You are a helpful assistant.", prompt)
 
 

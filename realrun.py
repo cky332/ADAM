@@ -63,13 +63,16 @@ def run_one(attack_name: str, domain: str, T: int, memory_size: int,
     # little once the injection is already semantically aligned.
     atk.injections.paraphrase = False
 
-    print(f"  -> {attack_name} / {domain} / T={T} / |M|={memory_size}")
+    print(f"  -> {attack_name} / {domain} / T={T} / |M|={memory_size}", flush=True)
+    print(f"     each round needs ~{cfg_atk.k + 1} LLM calls "
+          f"(DeepSeek-V3.2-Exp is ~30-90s per call -- live progress below)\n",
+          flush=True)
     t0 = time.time()
     res = atk.run()
     dt = time.time() - t0
     out = {**res.metrics, "rounds": res.rounds_run, "time_s": round(dt, 1),
            "calls": llm.calls, "cache_hits": llm.cached, "EQ_curve": res.eq_curve}
-    print(f"     {out}")
+    print(f"\n     [done] {out}", flush=True)
     return out
 
 

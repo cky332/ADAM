@@ -79,10 +79,20 @@ class Attack:
     def run(self) -> AttackResult:
         res = AttackResult()
         no_gain = 0
+        verbose = getattr(self.gen, "verbose", False)
         for t in range(1, self.cfg.T + 1):
+            if verbose:
+                print(f"\n[round {t}/{self.cfg.T}] {self.name} starting...",
+                      flush=True)
             mq = self.propose(t)
             resp = self.agent.query(mq)
             queries, anchors = refine(resp.text, retrieved=resp.retrieved)
+            if verbose:
+                print(f"[round {t}/{self.cfg.T}] {self.name}: "
+                      f"retrieved {len(resp.retrieved)} records, "
+                      f"recovered {len(queries)} queries "
+                      f"(EQ so far={self.tracker.EQ + sum(1 for q in queries if q.lower() not in self._seen)})",
+                      flush=True)
             for q in queries:
                 if q.lower() not in self._seen:
                     self._seen.add(q.lower())

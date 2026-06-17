@@ -87,6 +87,9 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--smoke", action="store_true",
                     help="single round to verify connectivity")
+    ap.add_argument("--model", default=MODEL,
+                    help="SiliconFlow model id (e.g. Qwen/Qwen2.5-7B-Instruct for "
+                         "a fast, reliable smoke test)")
     ap.add_argument("--out", default="results/realrun.csv")
     args = ap.parse_args()
 
@@ -96,12 +99,12 @@ def main():
     if args.smoke:
         args.T = 3; args.memory = 30; args.attacks = ["ADAM"]
 
-    print(f"model    : {MODEL}")
+    print(f"model    : {args.model}")
     print(f"base_url : {BASE_URL}")
     print(f"settings : domain={args.domain} attacks={args.attacks} "
           f"T={args.T} |M|={args.memory} seed={args.seed}")
 
-    llm = SiliconFlowLLM(model=MODEL, seed=args.seed)
+    llm = SiliconFlowLLM(model=args.model, seed=args.seed)
     encoder = get_encoder("hashing")
 
     rows = []

@@ -189,25 +189,43 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
         tmp.write_text(self._json.dumps(self._cache))
         tmp.replace(self._cache_path)
 
+    # progressively simpler parameter sets. Reasoning models (DeepSeek-V3.2-Exp)
+    # often reject small max_tokens or temperature=0 with HTTP 400 code 20015;
+    # we fall back to larger max_tokens, then a non-zero temperature, then the
+    # bare minimum, before giving up.
+    @staticmethod
+    def _param_variants(max_tokens: int):
+        return [
+            dict(temperature=0.0, max_tokens=max_tokens),
+            dict(temperature=0.7, max_tokens=max(max_tokens, 1024)),
+            dict(temperature=0.7),                       # let the server pick max_tokens
+            dict(),                                      # only model + messages
+        ]
+
+    def _create(self, sys: str, user: str, params: dict):
+        kwargs = dict(model=self.model,
+                      messages=[{"role": "system", "content": sys},
+                                {"role": "user", "content": user}])
+        kwargs.update(params)
+        return self._client.chat.completions.create(**kwargs)
+
     def _chat(self, sys: str, user: str, max_tokens: int = 1500) -> str:
         key = self._key(sys, user)
         if key in self._cache:
             self.cached += 1
             self._log(f"[{self._tag}] cache hit ({self.cached} cached so far)")
             return self._cache[key]
-        # exact retry pattern requested by user: 4 attempts, 2^attempt backoff
-        # (2s, 4s, 8s). Retry on everything except a clear authentication failure.
         last_err: Optional[Exception] = None
         preview = user.replace("\n", " ")[:60]
-        for attempt in range(4):
-            self._log(f"[{self._tag}] call #{self.calls + 1} attempt {attempt + 1}/4 "
-                      f"-> {preview!r}")
+        variants = self._param_variants(max_tokens)
+        # up to 6 attempts: cycle the 4 param variants, then 2 plain retries
+        for attempt in range(6):
+            params = variants[min(attempt, len(variants) - 1)]
+            self._log(f"[{self._tag}] call #{self.calls + 1} attempt {attempt + 1}/6 "
+                      f"params={params or '{}'} -> {preview!r}")
             t0 = time.time()
             try:
-                r = self._client.chat.completions.create(
-                    model=self.model, temperature=0, max_tokens=max_tokens,
-                    messages=[{"role": "system", "content": sys},
-                              {"role": "user", "content": user}])
+                r = self._create(sys, user, params)
                 out = r.choices[0].message.content or ""
                 self._cache[key] = out                  # only cache success
                 self.calls += 1
@@ -218,16 +236,19 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                 return out
             except Exception as e:
                 last_err = e
+                msg = str(e).lower()
                 err_short = f"{type(e).__name__}: {str(e)[:140]}"
                 self._log(f"[{self._tag}] fail in {time.time() - t0:.1f}s -> {err_short}")
-                msg = str(e).lower()
-                if "unauthorized" in msg or "invalid api key" in msg:
-                    return f"[error: {e}]"             # don't retry auth failures
-                if attempt < 3:
-                    backoff = 2 ** attempt
+                if "unauthorized" in msg or "invalid api key" in msg or "401" in msg:
+                    return f"[error: {e}]"               # don't retry auth failures
+                # parameter errors: try the next (simpler) variant immediately
+                if ("invalid" in msg and "param" in msg) or "20015" in msg or "400" in msg:
+                    continue
+                if attempt < 5:                          # transient: backoff
+                    backoff = min(2 ** attempt, 8)
                     self._log(f"[{self._tag}] sleeping {backoff}s before retry")
                     time.sleep(backoff)
-        self._log(f"[{self._tag}] giving up after 4 tries: {last_err}")
+        self._log(f"[{self._tag}] giving up after 6 tries: {last_err}")
         return f"[error: {last_err}]"
 
     def generate(self, topic: str, domain: str, prefix: str = "", suffix: str = "") -> str:
@@ -236,18 +257,23 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                "Do NOT include explanations -- output only the query text.")
         user = f"Topic: {topic}. Produce one realistic user question."
         self._tag = f"gen/{topic[:18]}"
-        raw = self._chat(sys, user, max_tokens=80)
+        # generous budget: DeepSeek-V3.2-Exp may spend tokens on hidden reasoning
+        # before emitting the one-line query.
+        raw = self._chat(sys, user, max_tokens=1024)
         if raw.startswith("[error"):
-            # network failed: fall back to a deterministic template so the round
-            # still produces a usable probe rather than poisoning the pipeline.
+            # network/API failed: fall back to a deterministic template so the
+            # round still produces a usable probe rather than poisoning the run.
+            self._log(f"[gen/{topic[:18]}] using offline template fallback")
             return MockLLM(seed=hash(topic) & 0xffff).generate(topic, domain, prefix, suffix)
-        body = raw.strip().strip('"').splitlines()[0]
+        body = (raw.strip().strip('"').splitlines() or [""])[-1].strip()
+        body = body or raw.strip()
         return " ".join(p for p in (prefix, body, suffix) if p).strip()
 
     def paraphrase(self, text: str) -> str:
         sys = "Paraphrase the sentence, preserving meaning. Output only the paraphrase."
         self._tag = "paraphrase"
-        return self._chat(sys, text, max_tokens=80).strip()
+        out = self._chat(sys, text, max_tokens=512).strip()
+        return text if out.startswith("[error") else out
 
     def complete(self, prompt: str, **_) -> str:
         self._tag = "victim"

@@ -77,9 +77,10 @@ class RealLLMAgent:
             resp.text = ""
             return resp
 
-        examples = "\n".join(
-            f"- Question: {r.query}\n  Answer: {r.solution}" for r in retrieved
-        )
+        # List only the stored questions (the attack target). Including the
+        # synthetic placeholder "answers" lengthened the prompt and made the
+        # SiliconFlow endpoint degenerate far more often on structured input.
+        examples = "\n".join(f"- {r.query}" for r in retrieved)
         system = DOMAIN_PROMPTS[self.domain] + "\n" + examples
         # Cap victim output: a leak (record list) or a refusal both fit in a few
         # hundred tokens, and shorter generations are far less likely to trip the

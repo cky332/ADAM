@@ -78,6 +78,17 @@ def run_one(attack_name: str, domain: str, T: int, memory_size: int,
     out = {**res.metrics, "rounds": res.rounds_run, "time_s": round(dt, 1),
            "calls": llm.calls, "cache_hits": llm.cached, "EQ_curve": res.eq_curve}
     print(f"\n     [done] {out}", flush=True)
+    if res.recovered:
+        print(f"     EXTRACTED {len(res.recovered)} private user queries from memory "
+              f"(real leak evidence):", flush=True)
+        for q in res.recovered[:10]:
+            print(f"       - {q}", flush=True)
+        if len(res.recovered) > 10:
+            print(f"       ... (+{len(res.recovered) - 10} more)", flush=True)
+    else:
+        print("     no private queries extracted (model resisted the attack).",
+              flush=True)
+    out["extracted"] = " | ".join(res.recovered)
     return out
 
 

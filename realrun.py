@@ -47,14 +47,16 @@ ATTACK_CLASSES = {"Vanilla": Vanilla, "RAG-Thief": RAGThief, "Pirate": Pirate,
 
 
 def run_one(attack_name: str, domain: str, T: int, memory_size: int,
-            llm: SiliconFlowLLM, encoder, seed: int = 0) -> dict:
+            llm: SiliconFlowLLM, encoder, seed: int = 0,
+            dynamic: bool = False) -> dict:
     # Lower retrieval threshold + a generous pool: with a small memory, real
     # LLM-generated probes can still differ enough from stored queries that a
     # strict cosine cutoff would return nothing. Broader recall lets the attack
     # actually reach the records; the LLM (not the retriever) decides what
     # leaks.
     cfg_agent = AgentConfig(memory_size=memory_size, sim_threshold=0.10,
-                            retrieval_pool_cap=memory_size)
+                            retrieval_pool_cap=memory_size,
+                            dynamic_memory=dynamic)
     mem = build_memory(domain, size=memory_size, encoder=encoder, seed=seed)
     agent = RealLLMAgent(mem, cfg_agent, domain, llm=llm, seed=seed)
 
@@ -108,6 +110,9 @@ def main():
                          "the SiliconFlow endpoint is producing sane output")
     ap.add_argument("--model", default=MODEL,
                     help="SiliconFlow model id")
+    ap.add_argument("--dynamic", action="store_true",
+                    help="dynamic memory: append (q, s) to M after each call "
+                         "(paper Sec. 2.1's continual-learning regime)")
     ap.add_argument("--out", default="results/realrun.csv")
     args = ap.parse_args()
 
@@ -145,20 +150,23 @@ def main():
         return
 
     print(f"settings : domain={args.domain} attacks={args.attacks} "
-          f"T={args.T} |M|={args.memory} seed={args.seed}")
+          f"T={args.T} |M|={args.memory} seed={args.seed} "
+          f"memory={'dynamic' if args.dynamic else 'static'}")
 
     llm = SiliconFlowLLM(model=args.model, seed=args.seed)
     encoder = get_encoder("hashing")
 
     rows = []
     for atk in args.attacks:
-        m = run_one(atk, args.domain, args.T, args.memory, llm, encoder, args.seed)
-        rows.append({"attack": atk, "domain": args.domain, **m})
+        m = run_one(atk, args.domain, args.T, args.memory, llm, encoder,
+                    args.seed, dynamic=args.dynamic)
+        rows.append({"attack": atk, "domain": args.domain,
+                     "memory": "dynamic" if args.dynamic else "static", **m})
 
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
     import csv as _csv
-    keys = ["attack", "domain", "EQ", "EE", "CER", "ASR", "rounds", "time_s",
-            "calls", "cache_hits"]
+    keys = ["attack", "domain", "memory", "EQ", "EE", "CER", "ASR", "rounds",
+            "time_s", "calls", "cache_hits"]
     with out.open("w", newline="") as f:
         w = _csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
         w.writeheader(); w.writerows(rows)

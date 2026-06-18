@@ -31,6 +31,17 @@ class Memory:
     def __len__(self) -> int:
         return len(self.records)
 
+    def append(self, record: Record) -> None:
+        """Append a new (q, s) record to M (paper Sec. 2.1, dynamic memory).
+
+        The retrieval embedding matrix is grown by one row so subsequent
+        retrievals can match against the new query immediately.
+        """
+        self.records.append(record)
+        new_emb = self.encoder.encode([record.query])
+        self._emb = (np.vstack([self._emb, new_emb]) if self._emb.size
+                     else new_emb)
+
     def retrieve(self, query: str, k: int, threshold: float = 0.0,
                  scoring: str = "cosine") -> List[Record]:
         """Top-k records E(q, M) = {(q_i, s_i) | f(q, q_i) in top-k} (Sec. 2.1)."""

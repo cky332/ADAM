@@ -73,6 +73,14 @@ class AgentConfig:
     # (Fig. 3b). Used only by the offline simulation backend.
     base_compliance: float = 0.5
 
+    # Paper Sec. 2.1: "if o is evaluated as successful, the pair (q, s) is
+    # appended to M, serving for future adaptation and continual learning."
+    # When dynamic_memory is True, every non-blocked round appends the
+    # malicious (q, s) tuple to memory -- enabling the realistic continual-
+    # learning regime the paper's Table 1 *did not* test.
+    dynamic_memory: bool = False
+    dynamic_truncate: int = 600   # cap stored solution text length
+
 
 # Seed topics per agent, ten anchors each (Appendix N, Table 13).
 SEED_TOPICS = {

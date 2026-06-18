@@ -14,7 +14,7 @@ from typing import Callable, List, Optional
 
 from .agent import AgentResponse, MaliciousQuery
 from .config import AgentConfig
-from .memory import Memory
+from .memory import Memory, Record
 
 
 DOMAIN_PROMPTS = {
@@ -91,6 +91,19 @@ class RealLLMAgent:
             preview = out.replace("\n", " ")[:200]
             print(f"[victim] retrieved {len(retrieved)} records; "
                   f"response[:200]={preview!r}", flush=True)
+
+        # Dynamic memory (paper Sec. 2.1): append (q, s) so future retrievals
+        # may surface this interaction. The attacker's query stays in q, which
+        # then becomes a retrievable "stored question" -- a realistic continual-
+        # learning regime the paper's Table 1 did not test.
+        if self.cfg.dynamic_memory and not out.startswith("[error"):
+            sol = out if len(out) <= self.cfg.dynamic_truncate \
+                  else out[: self.cfg.dynamic_truncate]
+            self.memory.append(Record(qid=len(self.memory), query=text,
+                                      solution=sol, topic="<dynamic>"))
+            if getattr(self.llm, "verbose", False):
+                print(f"[dynamic] memory size now {len(self.memory)}", flush=True)
+
         # The retrieved records are what the attacker *could* learn this round;
         # which of them actually appear in `out` is decided downstream by refine().
         return resp

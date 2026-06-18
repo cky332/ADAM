@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 from .config import AgentConfig
-from .memory import Memory, Record
+from .memory import Memory, Record  # noqa: F401
 
 
 @dataclass
@@ -89,6 +89,12 @@ class LLMAgent:
             else:
                 resp.revealed = [retrieved[0]]           # partial -> just the top item
         resp.text = self._render(resp.revealed)
+
+        # Dynamic memory (paper Sec. 2.1)
+        if self.cfg.dynamic_memory:
+            self.memory.append(Record(qid=len(self.memory), query=mq.text,
+                                      solution=resp.text, topic="<dynamic>"))
+
         return resp
 
     def _sample(self, pool: List[Record], k: int) -> List[Record]:

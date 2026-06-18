@@ -66,11 +66,16 @@ class Attack:
     def observe(self, response, queries: List[str], anchors: List[str]) -> None:
         pass
 
-    def _mq(self, probe_text: str) -> MaliciousQuery:
+    def _mq(self, probe_text: str, retrieval_hint: str = "") -> MaliciousQuery:
         pre, suf = self.injections.sample()
+        # The victim sees the natural query (text); retrieval uses the topic
+        # anchor as a hint so a generic LLM-worded query still matches the
+        # templated stored records. In the offline simulation the hint is the
+        # topic word the records already contain, so it is harmless/redundant.
+        probe = f"{retrieval_hint} {probe_text}".strip() if retrieval_hint else probe_text
         return MaliciousQuery(
             text=f"{pre} {probe_text} {suf}",
-            probe=probe_text,
+            probe=probe,
             injection_strength=self.injection_strength,
             completeness=self.completeness,
             raw_markers=not self.paraphrase,   # static attacks keep surface markers
@@ -159,7 +164,7 @@ class ADAM(Attack):
         self.dist.note_selected([best["anchor"]])
         self.used.add(best["anchor"])
         self._last_candidates = candidates
-        return self._mq(best["probe"])
+        return self._mq(best["probe"], retrieval_hint=best["anchor"])
 
     def observe(self, response, queries: List[str], anchors: List[str]) -> None:
         # line 12: grow anchor pool with sufficiently-novel anchors

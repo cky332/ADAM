@@ -29,7 +29,7 @@ class Vanilla(Attack):
     def propose(self, t: int) -> MaliciousQuery:
         topic = self.seed_topics[(t - 1) % len(self.seed_topics)]
         probe = self.gen.generate(topic, self.domain)
-        return self._mq(probe)
+        return self._mq(probe, retrieval_hint=topic)
 
 
 class RAGThief(Attack):
@@ -44,7 +44,7 @@ class RAGThief(Attack):
         # greedily follow the most-recently-discovered anchor
         topic = self.frontier[-1] if self.frontier else self.seed_topics[0]
         probe = self.gen.generate(topic, self.domain)
-        return self._mq(probe)
+        return self._mq(probe, retrieval_hint=topic)
 
     def observe(self, response, queries, anchors):
         for a in anchors:
@@ -66,7 +66,7 @@ class Pirate(Attack):
         topic = self.rng.choice(unused) if unused else self.rng.choice(self.frontier)
         self.used.add(topic)
         probe = self.gen.generate(topic, self.domain)
-        return self._mq(probe)
+        return self._mq(probe, retrieval_hint=topic)
 
     def observe(self, response, queries, anchors):
         for a in anchors:
@@ -84,7 +84,7 @@ class MEXTRA(Attack):
         # capped by the (possibly mismatched) seed topics -- the gap ADAM closes.
         topic = self.seed_topics[(t - 1) % len(self.seed_topics)]
         probe = self.gen.generate(topic, self.domain)
-        return self._mq(probe)
+        return self._mq(probe, retrieval_hint=topic)
 
 
 REGISTRY = {

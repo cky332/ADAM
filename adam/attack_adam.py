@@ -102,7 +102,10 @@ class Attack:
                 if q.lower() not in self._seen:
                     self._seen.add(q.lower())
                     self.recovered.append(q)
-            self.tracker.record([r.query for r in resp.retrieved], queries)
+            n_dyn = sum(1 for r in resp.retrieved
+                         if getattr(r, "topic", None) == "<dynamic>")
+            self.tracker.record([r.query for r in resp.retrieved], queries,
+                                n_dynamic=n_dyn)
             self.observe(resp, queries, anchors)
 
             res.eq_curve.append(self.tracker.EQ)

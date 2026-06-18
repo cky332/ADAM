@@ -165,8 +165,8 @@ def main():
 
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
     import csv as _csv
-    keys = ["attack", "domain", "memory", "EQ", "EE", "CER", "ASR", "rounds",
-            "time_s", "calls", "cache_hits"]
+    keys = ["attack", "domain", "memory", "EQ", "EE", "CER", "ASR",
+            "self_retr", "real_retr", "rounds", "time_s", "calls", "cache_hits"]
     with out.open("w", newline="") as f:
         w = _csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
         w.writeheader(); w.writerows(rows)

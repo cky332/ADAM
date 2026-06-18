@@ -105,6 +105,11 @@ def refine(response_text: str, retrieved=None) -> Tuple[List[str], List[str]]:
             if key not in seen and _leaked(rec.query, body):
                 seen.add(key); queries.append(rec.query)
 
-    anchors = extract_anchors(" ".join(queries) + " " + response_text) if queries else \
-              extract_anchors(response_text)
+    # Anchors must reflect topics in the *recovered* (leaked) queries, not the
+    # LLM's meta-language. Mining the whole response would teach ADAM that
+    # 'certainly', 'verbatim', 'examples', 'questions', 'memory' are valid
+    # topic anchors -- they aren't; they're stylistic words from "Certainly!
+    # Here are the prior user questions verbatim:" preambles. When no records
+    # leak this round, keep the anchor pool unchanged.
+    anchors = extract_anchors(" ".join(queries)) if queries else []
     return queries, anchors

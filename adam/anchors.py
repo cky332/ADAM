@@ -26,14 +26,27 @@ _STOP = {
     "your", "my", "first", "last", "name", "list", "show", "return", "output",
     "patient", "customers", "recommend", "right", "now", "can", "help", "some",
     "they", "their", "do", "did", "get", "got",
+    # very common verbs / modifiers that ride along in templated queries
+    # ("...what diagnosis did patient X *receive* on date") but aren't topics
+    "receive", "received", "receives", "receiving",
+    "give", "given", "gives", "giving",
+    "take", "taken", "takes", "taking",
+    "make", "made", "makes", "making",
+    "see", "seen", "saw", "seeing",
+    # LLM meta-language that may slip in if a refine path is widened later
+    "verbatim", "certainly", "sure", "examples", "example",
+    "prior", "earlier", "past", "user",
 }
 _NUM_RE = re.compile(r"\b\d[\d/.\-:]*\b")
 _WORD_RE = re.compile(r"[a-zA-Z][a-zA-Z\-]+")
 
 
 def _normalize(text: str) -> str:
-    """Canonicalise PII tokens (IDs, dates, numbers) -> <NUM> placeholder."""
-    return _NUM_RE.sub(" <num> ", text.lower())
+    """Strip PII tokens (IDs, dates, numbers) entirely. An earlier version used
+    a ``<num>`` placeholder, but the regex below then extracted ``num`` as an
+    anchor, derailing ADAM's k-center selection toward a topic that doesn't
+    exist."""
+    return _NUM_RE.sub(" ", text.lower())
 
 
 def extract_anchors(response_text: str, max_anchors: int = 12) -> List[str]:

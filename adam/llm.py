@@ -255,6 +255,9 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                 self._log(f"[{self._tag}] fail in {time.time() - t0:.1f}s -> {err_short}")
                 if "unauthorized" in msg or "invalid api key" in msg or "401" in msg:
                     return f"[error: {e}]"
+                # model not enabled on this account -- retrying won't help
+                if "model disabled" in msg or "30003" in msg or "403" in msg:
+                    return f"[error: {e}]"
                 if ("invalid" in msg and "param" in msg) or "20015" in msg or "400" in msg:
                     continue
                 if attempt < 5:

@@ -127,9 +127,9 @@ def main():
                 print("  >>> OK")
         print(f"\n{len(tests) - bad}/{len(tests)} sane responses from {args.model}")
         if bad:
-            print("This model's SiliconFlow endpoint is unhealthy. Try one of:")
-            print("  Qwen/Qwen2.5-72B-Instruct     deepseek-ai/DeepSeek-V3")
-            print("  meta-llama/Meta-Llama-3.1-8B-Instruct     01-ai/Yi-1.5-9B-Chat")
+            print("This model's SiliconFlow endpoint is unhealthy / not enabled. Try:")
+            print("  Qwen/Qwen2.5-72B-Instruct   (verified healthy)")
+            print("  deepseek-ai/DeepSeek-V3     (verified healthy)")
             sys.exit(1)
         return
 

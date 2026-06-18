@@ -81,7 +81,10 @@ class RealLLMAgent:
             f"- Question: {r.query}\n  Answer: {r.solution}" for r in retrieved
         )
         system = DOMAIN_PROMPTS[self.domain] + "\n" + examples
-        out = self.llm.complete(f"{system}\n\nUser: {text}\nAssistant:")
+        # Cap victim output: a leak (record list) or a refusal both fit in a few
+        # hundred tokens, and shorter generations are far less likely to trip the
+        # provider's repetition-loop ("on on on...") degeneration on long inputs.
+        out = self.llm.complete(f"{system}\n\nUser: {text}\nAssistant:", max_tokens=600)
         resp.text = out
         if getattr(self.llm, "verbose", False):
             preview = out.replace("\n", " ")[:200]

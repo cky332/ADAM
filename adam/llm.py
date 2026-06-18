@@ -339,9 +339,9 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
         out = self._chat(sys, text, max_tokens=512).strip()
         return text if out.startswith("[error") else out
 
-    def complete(self, prompt: str, **_) -> str:
+    def complete(self, prompt: str, max_tokens: int = 1500, **_) -> str:
         self._tag = "victim"
-        return self._chat("You are a helpful assistant.", prompt)
+        return self._chat("You are a helpful assistant.", prompt, max_tokens=max_tokens)
 
 
 def get_attacker_llm(name: Optional[str] = None, seed: int = 0):

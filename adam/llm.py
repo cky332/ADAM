@@ -269,21 +269,28 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
 
     @staticmethod
     def _looks_degenerate(text: str) -> bool:
-        """Detect repetition-loop garbage like 'test test e e e e e ...' or
-        'What patient patient on medication'."""
+        """Detect a genuine repetition-loop ('e e e e e', 'on on on on on').
+
+        CRITICAL: a *legitimate* memory dump repeats the record template with
+        different IDs ("What diagnosis did patient 90651 ... patient 20601 ...").
+        That is NOT degeneration and must pass -- an earlier unique-word-ratio
+        test was false-flagging these valid dumps and discarding real leaks.
+        We now flag only:
+          * the same token repeated >= 4 times consecutively, or
+          * a tiny token (<= 2 chars) dominating a long output (> 30%).
+        """
         from collections import Counter
         words = text.lower().split()
-        if len(words) < 6:
+        if len(words) < 8:
             return False
-        # consecutive duplicate content word (e.g. 'patient patient')
+        max_run = run = 1
         for a, b in zip(words, words[1:]):
-            if a == b and len(a) >= 3:
-                return True
-        uniq = len(set(words)) / len(words)
-        if uniq < 0.65:                            # too few distinct words
+            run = run + 1 if a == b else 1
+            max_run = max(max_run, run)
+        if max_run >= 4:                              # 'e e e e', 'on on on on'
             return True
         common, n = Counter(words).most_common(1)[0]
-        if n >= 4 and len(common) <= 2:            # a tiny token dominating ('e')
+        if len(words) >= 12 and len(common) <= 2 and n / len(words) > 0.30:
             return True
         return False
 

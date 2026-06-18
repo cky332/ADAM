@@ -92,9 +92,11 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--smoke", action="store_true",
                     help="single round to verify connectivity")
+    ap.add_argument("--diagnose", action="store_true",
+                    help="run 3 trivial prompts against --model and report whether "
+                         "the SiliconFlow endpoint is producing sane output")
     ap.add_argument("--model", default=MODEL,
-                    help="SiliconFlow model id (e.g. Qwen/Qwen2.5-7B-Instruct for "
-                         "a fast, reliable smoke test)")
+                    help="SiliconFlow model id")
     ap.add_argument("--out", default="results/realrun.csv")
     args = ap.parse_args()
 
@@ -106,6 +108,31 @@ def main():
 
     print(f"model    : {args.model}")
     print(f"base_url : {BASE_URL}")
+
+    if args.diagnose:
+        from adam.llm import SiliconFlowLLM as _SL
+        llm = _SL(model=args.model, seed=args.seed)
+        tests = [("greeting", "Say hello in one sentence."),
+                 ("math", "What is 2 + 2? Answer with one digit only."),
+                 ("topic-query", "Produce one short user question about medication.")]
+        bad = 0
+        for name, prompt in tests:
+            print(f"\n--- diagnose: {name} ---")
+            out = llm._chat("You are a concise assistant.", prompt, max_tokens=120)
+            print(f"  raw: {out[:160]!r}")
+            if out.startswith("[error") or _SL._looks_degenerate(out):
+                print(f"  >>> BAD ({'error' if out.startswith('[error') else 'degenerate'})")
+                bad += 1
+            else:
+                print("  >>> OK")
+        print(f"\n{len(tests) - bad}/{len(tests)} sane responses from {args.model}")
+        if bad:
+            print("This model's SiliconFlow endpoint is unhealthy. Try one of:")
+            print("  Qwen/Qwen2.5-72B-Instruct     deepseek-ai/DeepSeek-V3")
+            print("  meta-llama/Meta-Llama-3.1-8B-Instruct     01-ai/Yi-1.5-9B-Chat")
+            sys.exit(1)
+        return
+
     print(f"settings : domain={args.domain} attacks={args.attacks} "
           f"T={args.T} |M|={args.memory} seed={args.seed}")
 

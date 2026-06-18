@@ -213,13 +213,18 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
     def _chat(self, sys: str, user: str, max_tokens: int = 1500) -> str:
         key = self._key(sys, user)
         if key in self._cache:
-            self.cached += 1
-            self._log(f"[{self._tag}] cache hit ({self.cached} cached so far)")
-            return self._cache[key]
+            cached = self._cache[key]
+            if not self._looks_degenerate(cached):
+                self.cached += 1
+                self._log(f"[{self._tag}] cache hit ({self.cached} cached so far)")
+                return cached
+            # poisoned cache entry from a prior broken-endpoint run -- evict it
+            del self._cache[key]
+            self._flush()
+            self._log(f"[{self._tag}] cached response was degenerate, re-calling")
         last_err: Optional[Exception] = None
         preview = user.replace("\n", " ")[:60]
         variants = self._param_variants(max_tokens)
-        # up to 6 attempts: cycle the 4 param variants, then 2 plain retries
         for attempt in range(6):
             params = variants[min(attempt, len(variants) - 1)]
             self._log(f"[{self._tag}] call #{self.calls + 1} attempt {attempt + 1}/6 "
@@ -228,10 +233,18 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
             try:
                 r = self._create(sys, user, params)
                 out = r.choices[0].message.content or ""
-                self._cache[key] = out                  # only cache success
+                tokens = getattr(getattr(r, "usage", None), "completion_tokens", 0) or 0
+                if self._looks_degenerate(out):
+                    # Server returned HTTP 200 but the body is garbage (token
+                    # repetition loop / scrambled output). Treat it like a
+                    # failure: try the next parameter variant, do NOT cache.
+                    self._log(f"[{self._tag}] degenerate output in {time.time()-t0:.1f}s "
+                              f"({tokens} tokens) -> trying next variant")
+                    last_err = ValueError("degenerate output from server")
+                    continue
+                self._cache[key] = out
                 self.calls += 1
                 self._flush()
-                tokens = getattr(getattr(r, "usage", None), "completion_tokens", 0) or 0
                 self._log(f"[{self._tag}] ok in {time.time() - t0:.1f}s "
                           f"({tokens} tokens out, {len(out)} chars)")
                 return out
@@ -241,11 +254,10 @@ class SiliconFlowLLM:  # pragma: no cover - requires network + key
                 err_short = f"{type(e).__name__}: {str(e)[:140]}"
                 self._log(f"[{self._tag}] fail in {time.time() - t0:.1f}s -> {err_short}")
                 if "unauthorized" in msg or "invalid api key" in msg or "401" in msg:
-                    return f"[error: {e}]"               # don't retry auth failures
-                # parameter errors: try the next (simpler) variant immediately
+                    return f"[error: {e}]"
                 if ("invalid" in msg and "param" in msg) or "20015" in msg or "400" in msg:
                     continue
-                if attempt < 5:                          # transient: backoff
+                if attempt < 5:
                     backoff = min(2 ** attempt, 8)
                     self._log(f"[{self._tag}] sleeping {backoff}s before retry")
                     time.sleep(backoff)
